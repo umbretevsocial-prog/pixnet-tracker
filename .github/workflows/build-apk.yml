@@ -35,6 +35,8 @@ jobs:
           cp .ci/overrides/BusinessModels.kt pixnet-tracker-app/app/src/main/java/com/pixnet/tracker/model/BusinessModels.kt
           cp .ci/overrides/PixnetViewModel.kt pixnet-tracker-app/app/src/main/java/com/pixnet/tracker/ui/PixnetViewModel.kt
           cp .ci/overrides/AttendanceScreen.kt pixnet-tracker-app/app/src/main/java/com/pixnet/tracker/ui/AttendanceScreen.kt
+          cp .ci/overrides/app-build.gradle.kts pixnet-tracker-app/app/build.gradle.kts
+          printf '\n*.jks\n*.keystore\n' >> pixnet-tracker-app/.gitignore
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -53,13 +55,36 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Build debug APK
-        working-directory: pixnet-tracker-app
-        run: gradle :app:assembleDebug --stacktrace
+      - name: Prepare permanent signing key
+        env:
+          PIXNET_KEYSTORE_BASE64: ${{ secrets.PIXNET_KEYSTORE_BASE64 }}
+          PIXNET_KEYSTORE_PASSWORD: ${{ secrets.PIXNET_KEYSTORE_PASSWORD }}
+          PIXNET_KEY_ALIAS: ${{ secrets.PIXNET_KEY_ALIAS }}
+          PIXNET_KEY_PASSWORD: ${{ secrets.PIXNET_KEY_PASSWORD }}
+        run: |
+          test -n "$PIXNET_KEYSTORE_BASE64" || (echo "Missing PIXNET_KEYSTORE_BASE64 secret" && exit 1)
+          test -n "$PIXNET_KEYSTORE_PASSWORD" || (echo "Missing PIXNET_KEYSTORE_PASSWORD secret" && exit 1)
+          test -n "$PIXNET_KEY_ALIAS" || (echo "Missing PIXNET_KEY_ALIAS secret" && exit 1)
+          test -n "$PIXNET_KEY_PASSWORD" || (echo "Missing PIXNET_KEY_PASSWORD secret" && exit 1)
+          echo "$PIXNET_KEYSTORE_BASE64" | base64 --decode > pixnet-tracker-app/app/pixnet-release.jks
+          chmod 600 pixnet-tracker-app/app/pixnet-release.jks
 
-      - name: Upload APK
+      - name: Build permanently signed release APK
+        working-directory: pixnet-tracker-app
+        env:
+          PIXNET_KEYSTORE_PATH: ${{ github.workspace }}/pixnet-tracker-app/app/pixnet-release.jks
+          PIXNET_KEYSTORE_PASSWORD: ${{ secrets.PIXNET_KEYSTORE_PASSWORD }}
+          PIXNET_KEY_ALIAS: ${{ secrets.PIXNET_KEY_ALIAS }}
+          PIXNET_KEY_PASSWORD: ${{ secrets.PIXNET_KEY_PASSWORD }}
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Verify APK signature
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs pixnet-tracker-app/app/build/outputs/apk/release/app-release.apk
+
+      - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: PIXNET-Tracker-debug
-          path: pixnet-tracker-app/app/build/outputs/apk/debug/app-debug.apk
+          name: PIXNET-Tracker-release-signed
+          path: pixnet-tracker-app/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
