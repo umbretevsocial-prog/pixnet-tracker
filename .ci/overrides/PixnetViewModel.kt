@@ -114,7 +114,7 @@ class PixnetViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch { dao.clearAttendance(date.toEpochDay()) }
     }
 
-    fun addPayrollPayment(date: LocalDate, staff: String, amount: Double, reference: String): Boolean {
+    fun addPayrollPayment(date: LocalDate, staff: String, amount: Double, reference: String): PayrollPaymentEntity? {
         val snapshot = state.value
         val earned = snapshot.attendance.filter {
             it.staff == staff && LocalDate.ofEpochDay(it.dateEpochDay) <= date
@@ -124,19 +124,19 @@ class PixnetViewModel(application: Application) : AndroidViewModel(application) 
         }.sumOf { it.amount }
         val outstanding = max(0.0, earned - paid)
 
-        if (amount <= 0.0 || amount > outstanding + 0.005) return false
+        if (amount <= 0.0 || amount > outstanding + 0.005) return null
+
+        val entry = PayrollPaymentEntity(
+            dateEpochDay = date.toEpochDay(),
+            staff = staff,
+            amount = amount,
+            reference = reference
+        )
 
         viewModelScope.launch {
-            dao.insertPayrollPayment(
-                PayrollPaymentEntity(
-                    dateEpochDay = date.toEpochDay(),
-                    staff = staff,
-                    amount = amount,
-                    reference = reference
-                )
-            )
+            dao.insertPayrollPayment(entry)
         }
-        return true
+        return entry
     }
 
     fun deletePayrollPayment(entry: PayrollPaymentEntity) {
