@@ -41,6 +41,7 @@ jobs:
           mkdir -p pixnet-tracker-app/app/src/main/res/xml
           cp .ci/overrides/file_paths.xml pixnet-tracker-app/app/src/main/res/xml/file_paths.xml
           cp .ci/overrides/app-build.gradle.kts pixnet-tracker-app/app/build.gradle.kts
+          python .ci/patches/v1.1.3_receipt_days.py
           printf '\n*.jks\n*.keystore\n' >> pixnet-tracker-app/.gitignore
 
       - name: Set up JDK 17
@@ -96,6 +97,6 @@ jobs:
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: PIXNET-Tracker-v1.1.2-release-signed
+          name: PIXNET-Tracker-v1.1.3-release-signed
           path: pixnet-tracker-app/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
