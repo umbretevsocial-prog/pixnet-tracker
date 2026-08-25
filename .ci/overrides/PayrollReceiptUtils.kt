@@ -12,27 +12,29 @@ import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileOutputStream
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
-class PayrollReceiptData(
+data class PayrollReceiptData(
     val staff: String,
     val datePaid: LocalDate,
-    payrollPeriodLabel: String,
-    val amountPaid: Double
+    val amountPaid: Double,
+    val attendanceDates: List<LocalDate>
 ) {
-    // Receipt periods follow payroll cutoffs: 1–15 and 16–month-end.
     val payrollPeriodLabel: String = payrollPeriodLabelFor(datePaid)
+    val daysWorked: Int = attendanceDates.size
+}
+
+fun payrollPeriodBounds(date: LocalDate): Pair<LocalDate, LocalDate> {
+    return if (date.dayOfMonth <= 15) {
+        date.withDayOfMonth(1) to date.withDayOfMonth(15)
+    } else {
+        date.withDayOfMonth(16) to date.withDayOfMonth(date.lengthOfMonth())
+    }
 }
 
 private fun payrollPeriodLabelFor(date: LocalDate): String {
-    val start: LocalDate
-    val end: LocalDate
-    if (date.dayOfMonth <= 15) {
-        start = date.withDayOfMonth(1)
-        end = date.withDayOfMonth(15)
-    } else {
-        start = date.withDayOfMonth(16)
-        end = date.withDayOfMonth(date.lengthOfMonth())
-    }
+    val (start, end) = payrollPeriodBounds(date)
     return "${formatDate(start)} – ${formatDate(end)}"
 }
 
@@ -68,7 +70,7 @@ object PayrollReceiptUtils {
 
     private fun buildReceiptBitmap(data: PayrollReceiptData): Bitmap {
         val width = 1080
-        val height = 1350
+        val height = 1600
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)
@@ -92,6 +94,10 @@ object PayrollReceiptUtils {
             color = Color.parseColor("#111827")
             textSize = 40f
         }
+        val recordPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#111827")
+            textSize = 36f
+        }
         val amountPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#14532D")
             textSize = 66f
@@ -109,36 +115,93 @@ object PayrollReceiptUtils {
         var y = 120f
         val left = 90f
         val valueX = 350f
+        val right = width - 90f
 
         canvas.drawText("PIXNET", left, y, titlePaint)
         y += 78f
         canvas.drawText("Payroll Receipt", left, y, subtitlePaint)
         y += 40f
-        canvas.drawLine(left, y, width - left, y, linePaint)
+        canvas.drawLine(left, y, right, y, linePaint)
         y += 90f
 
         canvas.drawText("Staff", left, y, labelPaint)
         canvas.drawText(data.staff, valueX, y, valuePaint)
         y += 95f
 
-        canvas.drawText("Date Paid", left, y, labelPaint)
-        canvas.drawText(formatDate(data.datePaid), valueX, y, valuePaint)
-        y += 95f
-
         canvas.drawText("Payroll Period", left, y, labelPaint)
         canvas.drawText(data.payrollPeriodLabel, valueX, y, valuePaint)
         y += 95f
+
+        canvas.drawText("Days Worked", left, y, labelPaint)
+        val dayLabel = "${data.daysWorked} day${if (data.daysWorked == 1) "" else "s"}"
+        canvas.drawText(dayLabel, valueX, y, valuePaint)
+        y += 82f
+
+        canvas.drawText("Attendance Record", left, y, labelPaint)
+        y += 55f
+
+        val shortDate = DateTimeFormatter.ofPattern("MMM d", Locale.US)
+        val attendanceText = if (data.attendanceDates.isEmpty()) {
+            "No attendance dates recorded."
+        } else {
+            data.attendanceDates.joinToString(", ") { it.format(shortDate) }
+        }
+        y = drawWrappedText(
+            canvas = canvas,
+            text = attendanceText,
+            x = left,
+            startY = y,
+            maxWidth = right - left,
+            paint = recordPaint,
+            lineHeight = 52f
+        )
+        y += 45f
+
+        canvas.drawText("Date Paid", left, y, labelPaint)
+        canvas.drawText(formatDate(data.datePaid), valueX, y, valuePaint)
+        y += 105f
 
         canvas.drawText("Amount Paid", left, y, labelPaint)
         canvas.drawText(money(data.amountPaid), valueX, y, amountPaint)
         y += 120f
 
-        canvas.drawLine(left, y, width - left, y, linePaint)
+        canvas.drawLine(left, y, right, y, linePaint)
         y += 80f
         canvas.drawText("Received payroll payment from PIXNET.", left, y, notePaint)
-        y += 55f
-        canvas.drawText("This receipt is system-generated for staff payroll record purposes.", left, y, notePaint)
 
         return bitmap
+    }
+
+    private fun drawWrappedText(
+        canvas: Canvas,
+        text: String,
+        x: Float,
+        startY: Float,
+        maxWidth: Float,
+        paint: Paint,
+        lineHeight: Float
+    ): Float {
+        val words = text.split(" ")
+        var line = ""
+        var y = startY
+
+        words.forEach { word ->
+            val candidate = if (line.isEmpty()) word else "$line $word"
+            if (paint.measureText(candidate) <= maxWidth) {
+                line = candidate
+            } else {
+                if (line.isNotEmpty()) {
+                    canvas.drawText(line, x, y, paint)
+                    y += lineHeight
+                }
+                line = word
+            }
+        }
+
+        if (line.isNotEmpty()) {
+            canvas.drawText(line, x, y, paint)
+            y += lineHeight
+        }
+        return y
     }
 }
