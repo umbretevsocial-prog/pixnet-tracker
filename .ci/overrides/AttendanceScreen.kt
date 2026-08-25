@@ -7,6 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.pixnet.tracker.data.AttendanceEntity
@@ -25,6 +26,7 @@ fun AttendanceScreen(
 ) {
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
     var showPayroll by remember { mutableStateOf(false) }
+    var receiptEntry by remember { mutableStateOf<PayrollPaymentEntity?>(null) }
 
     val selectedEntry = state.attendance.firstOrNull {
         it.dateEpochDay == selectedDate.toEpochDay()
@@ -138,7 +140,7 @@ fun AttendanceScreen(
         item {
             SectionHeader(
                 "Recent Salary Payments",
-                "Payments are attached to the selected employee and add to Owner Advance."
+                "Payments are attached to the selected employee and add to Owner Advance. A simple payroll receipt can also be shared."
             )
         }
 
@@ -146,7 +148,11 @@ fun AttendanceScreen(
             item { EmptyState("No salary payments recorded yet.") }
         } else {
             items(state.payrollPayments.take(20), key = { it.id }) { entry ->
-                PayrollRow(entry, onDelete = { viewModel.deletePayrollPayment(entry) })
+                PayrollRow(
+                    entry,
+                    onReceipt = { receiptEntry = entry },
+                    onDelete = { viewModel.deletePayrollPayment(entry) }
+                )
             }
         }
     }
@@ -157,9 +163,19 @@ fun AttendanceScreen(
             onDismiss = { showPayroll = false },
             onSave = { date, staff, amount, reference ->
                 val saved = viewModel.addPayrollPayment(date, staff, amount, reference)
-                if (saved) showPayroll = false
+                if (saved != null) {
+                    showPayroll = false
+                    receiptEntry = saved
+                }
                 saved
             }
+        )
+    }
+
+    receiptEntry?.let { entry ->
+        SimplePayrollReceiptDialog(
+            entry = entry,
+            onDismiss = { receiptEntry = null }
         )
     }
 }
@@ -248,6 +264,7 @@ private fun AttendanceRow(entry: AttendanceEntity) {
 @Composable
 private fun PayrollRow(
     entry: PayrollPaymentEntity,
+    onReceipt: () -> Unit,
     onDelete: () -> Unit
 ) {
     val date = LocalDate.ofEpochDay(entry.dateEpochDay)
@@ -270,7 +287,10 @@ private fun PayrollRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            TextButton(onClick = onDelete) { Text("Delete") }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                TextButton(onClick = onReceipt) { Text("Receipt") }
+                TextButton(onClick = onDelete) { Text("Delete") }
+            }
         }
     }
 }
@@ -306,7 +326,7 @@ private fun payrollAsOf(
 private fun AddPayrollDialog(
     state: PixnetState,
     onDismiss: () -> Unit,
-    onSave: (LocalDate, String, Double, String) -> Boolean
+    onSave: (LocalDate, String, Double, String) -> PayrollPaymentEntity?
 ) {
     var date by remember { mutableStateOf(LocalDate.now()) }
     var staff by remember { mutableStateOf("Mayanne") }
@@ -420,7 +440,7 @@ private fun AddPayrollDialog(
                 )
 
                 Text(
-                    "Only this employee's payroll balance is reduced. The actual payment also becomes Owner Advance.",
+                    "A simple payroll receipt will be available right after saving.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -439,7 +459,7 @@ private fun AddPayrollDialog(
                 enabled = canSave,
                 onClick = {
                     val saved = onSave(date, staff, amount, reference)
-                    if (!saved) {
+                    if (saved == null) {
                         saveError = "Payment was not saved because the payroll balance changed. Please check the balance and try again."
                     }
                 }
@@ -451,4 +471,80 @@ private fun AddPayrollDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
+}
+
+@Composable
+private fun SimplePayrollReceiptDialog(
+    entry: PayrollPaymentEntity,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val date = LocalDate.ofEpochDay(entry.dateEpochDay)
+    val period = PixnetRules.periodFor(date)
+    val receipt = remember(entry.id, entry.dateEpochDay, entry.staff, entry.amount) {
+        PayrollReceiptData(
+            staff = entry.staff,
+            datePaid = date,
+            payrollPeriodLabel = "${formatDate(period.start)} – ${formatDate(period.end)}",
+            amountPaid = entry.amount
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Payroll Receipt") },
+        text = {
+            Card {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("PIXNET", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("Payroll Receipt", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    HorizontalDivider()
+                    ReceiptLine("Staff", receipt.staff)
+                    ReceiptLine("Date Paid", formatDate(receipt.datePaid))
+                    ReceiptLine("Payroll Period", receipt.payrollPeriodLabel)
+                    ReceiptLine("Amount Paid", money(receipt.amountPaid), bold = true)
+                    HorizontalDivider()
+                    Text(
+                        "Received payroll payment from PIXNET.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { PayrollReceiptUtils.shareReceipt(context, receipt) }) {
+                Text("Share Receipt")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
+}
+
+@Composable
+private fun ReceiptLine(label: String, value: String, bold: Boolean = false) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            label,
+            modifier = Modifier.width(110.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal
+        )
+    }
 }
