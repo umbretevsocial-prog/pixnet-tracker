@@ -35,6 +35,7 @@ jobs:
           cp .ci/overrides/BusinessModels.kt pixnet-tracker-app/app/src/main/java/com/pixnet/tracker/model/BusinessModels.kt
           cp .ci/overrides/PixnetViewModel.kt pixnet-tracker-app/app/src/main/java/com/pixnet/tracker/ui/PixnetViewModel.kt
           cp .ci/overrides/AttendanceScreen.kt pixnet-tracker-app/app/src/main/java/com/pixnet/tracker/ui/AttendanceScreen.kt
+          cp .ci/overrides/ExpensesScreen.kt pixnet-tracker-app/app/src/main/java/com/pixnet/tracker/ui/ExpensesScreen.kt
           cp .ci/overrides/app-build.gradle.kts pixnet-tracker-app/app/build.gradle.kts
           printf '\n*.jks\n*.keystore\n' >> pixnet-tracker-app/.gitignore
 
