@@ -88,3 +88,5 @@ jobs:
           name: PIXNET-Tracker-release-signed
           path: pixnet-tracker-app/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
+
+# Permanent signing build enabled.
