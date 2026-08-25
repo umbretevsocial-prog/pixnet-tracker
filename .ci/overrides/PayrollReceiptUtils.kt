@@ -13,12 +13,28 @@ import java.io.File
 import java.io.FileOutputStream
 import java.time.LocalDate
 
-data class PayrollReceiptData(
+class PayrollReceiptData(
     val staff: String,
     val datePaid: LocalDate,
-    val payrollPeriodLabel: String,
+    payrollPeriodLabel: String,
     val amountPaid: Double
-)
+) {
+    // Receipt periods follow payroll cutoffs: 1–15 and 16–month-end.
+    val payrollPeriodLabel: String = payrollPeriodLabelFor(datePaid)
+}
+
+private fun payrollPeriodLabelFor(date: LocalDate): String {
+    val start: LocalDate
+    val end: LocalDate
+    if (date.dayOfMonth <= 15) {
+        start = date.withDayOfMonth(1)
+        end = date.withDayOfMonth(15)
+    } else {
+        start = date.withDayOfMonth(16)
+        end = date.withDayOfMonth(date.lengthOfMonth())
+    }
+    return "${formatDate(start)} – ${formatDate(end)}"
+}
 
 object PayrollReceiptUtils {
     fun shareReceipt(context: Context, data: PayrollReceiptData) {
