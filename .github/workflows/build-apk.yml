@@ -30,6 +30,12 @@ jobs:
           unzip -q pixnet-source.zip
           test -f pixnet-tracker-app/settings.gradle.kts
 
+      - name: Apply current source overrides
+        run: |
+          cp .ci/overrides/BusinessModels.kt pixnet-tracker-app/app/src/main/java/com/pixnet/tracker/model/BusinessModels.kt
+          cp .ci/overrides/PixnetViewModel.kt pixnet-tracker-app/app/src/main/java/com/pixnet/tracker/ui/PixnetViewModel.kt
+          cp .ci/overrides/AttendanceScreen.kt pixnet-tracker-app/app/src/main/java/com/pixnet/tracker/ui/AttendanceScreen.kt
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
