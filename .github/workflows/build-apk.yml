@@ -15,7 +15,17 @@ jobs:
 
       - name: Reconstruct project source
         run: |
-          cat .ci/source.part* > pixnet-source.b64
+          cat \
+            .ci/source.part00 \
+            .ci/source.part01 \
+            .ci/source.part02 \
+            .ci/source.part03 \
+            .ci/source.part04a \
+            .ci/source.part04b \
+            .ci/source.part05 \
+            .ci/source.part06 \
+            .ci/source.part07 > pixnet-source.b64
+          test "$(wc -c < pixnet-source.b64)" -eq 42812
           base64 -d pixnet-source.b64 > pixnet-source.zip
           unzip -q pixnet-source.zip
           test -f pixnet-tracker-app/settings.gradle.kts
