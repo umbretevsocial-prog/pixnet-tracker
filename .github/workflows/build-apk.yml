@@ -55,28 +55,34 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Prepare permanent signing key
+      - name: Prepare and validate permanent signing key
         env:
-          PIXNET_KEYSTORE_BASE64: ${{ secrets.PIXNET_KEYSTORE_BASE64 }}
-          PIXNET_KEYSTORE_PASSWORD: ${{ secrets.PIXNET_KEYSTORE_PASSWORD }}
-          PIXNET_KEY_ALIAS: ${{ secrets.PIXNET_KEY_ALIAS }}
-          PIXNET_KEY_PASSWORD: ${{ secrets.PIXNET_KEY_PASSWORD }}
+          PIXNET_KEYSTORE_BASE64_RAW: ${{ secrets.PIXNET_KEYSTORE_BASE64 }}
+          PIXNET_KEYSTORE_PASSWORD_RAW: ${{ secrets.PIXNET_KEYSTORE_PASSWORD }}
+          PIXNET_KEY_PASSWORD_RAW: ${{ secrets.PIXNET_KEY_PASSWORD }}
         run: |
-          test -n "$PIXNET_KEYSTORE_BASE64" || (echo "Missing PIXNET_KEYSTORE_BASE64 secret" && exit 1)
-          test -n "$PIXNET_KEYSTORE_PASSWORD" || (echo "Missing PIXNET_KEYSTORE_PASSWORD secret" && exit 1)
-          test -n "$PIXNET_KEY_ALIAS" || (echo "Missing PIXNET_KEY_ALIAS secret" && exit 1)
-          test -n "$PIXNET_KEY_PASSWORD" || (echo "Missing PIXNET_KEY_PASSWORD secret" && exit 1)
-          echo "$PIXNET_KEYSTORE_BASE64" | base64 --decode > pixnet-tracker-app/app/pixnet-release.jks
+          test -n "$PIXNET_KEYSTORE_BASE64_RAW" || (echo "Missing PIXNET_KEYSTORE_BASE64 secret" && exit 1)
+          test -n "$PIXNET_KEYSTORE_PASSWORD_RAW" || (echo "Missing PIXNET_KEYSTORE_PASSWORD secret" && exit 1)
+          test -n "$PIXNET_KEY_PASSWORD_RAW" || (echo "Missing PIXNET_KEY_PASSWORD secret" && exit 1)
+          printf '%s' "$PIXNET_KEYSTORE_BASE64_RAW" | tr -d '\r\n ' | base64 --decode > pixnet-tracker-app/app/pixnet-release.jks
           chmod 600 pixnet-tracker-app/app/pixnet-release.jks
+          STORE_PASSWORD="$(printf '%s' "$PIXNET_KEYSTORE_PASSWORD_RAW" | tr -d '\r\n')"
+          keytool -list -keystore pixnet-tracker-app/app/pixnet-release.jks -storepass "$STORE_PASSWORD" -alias pixnet_release >/dev/null
+          echo "Permanent signing key validated successfully."
 
       - name: Build permanently signed release APK
         working-directory: pixnet-tracker-app
         env:
           PIXNET_KEYSTORE_PATH: ${{ github.workspace }}/pixnet-tracker-app/app/pixnet-release.jks
-          PIXNET_KEYSTORE_PASSWORD: ${{ secrets.PIXNET_KEYSTORE_PASSWORD }}
-          PIXNET_KEY_ALIAS: ${{ secrets.PIXNET_KEY_ALIAS }}
-          PIXNET_KEY_PASSWORD: ${{ secrets.PIXNET_KEY_PASSWORD }}
-        run: gradle :app:assembleRelease --stacktrace
+          PIXNET_KEYSTORE_PASSWORD_RAW: ${{ secrets.PIXNET_KEYSTORE_PASSWORD }}
+          PIXNET_KEY_PASSWORD_RAW: ${{ secrets.PIXNET_KEY_PASSWORD }}
+        run: |
+          STORE_PASSWORD="$(printf '%s' "$PIXNET_KEYSTORE_PASSWORD_RAW" | tr -d '\r\n')"
+          KEY_PASSWORD="$(printf '%s' "$PIXNET_KEY_PASSWORD_RAW" | tr -d '\r\n')"
+          PIXNET_KEYSTORE_PASSWORD="$STORE_PASSWORD" \
+          PIXNET_KEY_ALIAS="pixnet_release" \
+          PIXNET_KEY_PASSWORD="$KEY_PASSWORD" \
+          gradle :app:assembleRelease --stacktrace
 
       - name: Verify APK signature
         run: |
@@ -88,5 +94,3 @@ jobs:
           name: PIXNET-Tracker-release-signed
           path: pixnet-tracker-app/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
-
-# Permanent signing build enabled.
