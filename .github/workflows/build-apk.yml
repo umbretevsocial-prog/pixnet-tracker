@@ -36,6 +36,10 @@ jobs:
           cp .ci/overrides/PixnetViewModel.kt pixnet-tracker-app/app/src/main/java/com/pixnet/tracker/ui/PixnetViewModel.kt
           cp .ci/overrides/AttendanceScreen.kt pixnet-tracker-app/app/src/main/java/com/pixnet/tracker/ui/AttendanceScreen.kt
           cp .ci/overrides/ExpensesScreen.kt pixnet-tracker-app/app/src/main/java/com/pixnet/tracker/ui/ExpensesScreen.kt
+          cp .ci/overrides/PayrollReceiptUtils.kt pixnet-tracker-app/app/src/main/java/com/pixnet/tracker/ui/PayrollReceiptUtils.kt
+          cp .ci/overrides/AndroidManifest.xml pixnet-tracker-app/app/src/main/AndroidManifest.xml
+          mkdir -p pixnet-tracker-app/app/src/main/res/xml
+          cp .ci/overrides/file_paths.xml pixnet-tracker-app/app/src/main/res/xml/file_paths.xml
           cp .ci/overrides/app-build.gradle.kts pixnet-tracker-app/app/build.gradle.kts
           printf '\n*.jks\n*.keystore\n' >> pixnet-tracker-app/.gitignore
 
@@ -92,6 +96,6 @@ jobs:
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: PIXNET-Tracker-release-signed
+          name: PIXNET-Tracker-v1.1.2-release-signed
           path: pixnet-tracker-app/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
