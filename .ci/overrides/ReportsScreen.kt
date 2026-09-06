@@ -67,7 +67,7 @@ fun ReportsScreen(state:PixnetState,modifier:Modifier=Modifier) {
                         Text("${formatDate(report.period.start)} - ${formatDate(report.period.end)}",style=MaterialTheme.typography.bodySmall)
                         StatusPill(if(report.final)"FINAL" else "PROJECTED")
                     }
-                    IconButton(index<maxIndex,{if(mode==ReportMode.WEEKLY)wi++ else ci++}) { Icon(Icons.Default.ChevronRight,"Next") }
+                    IconButton(onClick={if(mode==ReportMode.WEEKLY)wi++ else ci++},enabled=index<maxIndex) { Icon(Icons.Default.ChevronRight,"Next") }
                 }
             }
         }
