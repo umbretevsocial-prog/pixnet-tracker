@@ -54,14 +54,14 @@ fun ReportsScreen(state:PixnetState,modifier:Modifier=Modifier) {
         item { SectionHeader("Business Reports","Weekly and PIXNET cutoff summaries from your live records.") }
         item {
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                FilterChip(mode==ReportMode.WEEKLY,{mode=ReportMode.WEEKLY;wi=currentWeek},{Text("Weekly")})
-                FilterChip(mode==ReportMode.CUTOFF,{mode=ReportMode.CUTOFF;ci=currentCutoff},{Text("Per Cutoff")})
+                FilterChip(selected=mode==ReportMode.WEEKLY,onClick={mode=ReportMode.WEEKLY;wi=currentWeek},label={Text("Weekly")})
+                FilterChip(selected=mode==ReportMode.CUTOFF,onClick={mode=ReportMode.CUTOFF;ci=currentCutoff},label={Text("Per Cutoff")})
             }
         }
         item {
             Card {
                 Row(Modifier.fillMaxWidth().padding(8.dp),verticalAlignment=Alignment.CenterVertically) {
-                    IconButton(index>0,{if(mode == ReportMode.WEEKLY) wi-- else ci--}) { Icon(Icons.Default.ChevronLeft,"Previous") }
+                    IconButton(onClick={if(mode==ReportMode.WEEKLY)wi-- else ci--},enabled=index>0) { Icon(Icons.Default.ChevronLeft,"Previous") }
                     Column(Modifier.weight(1f),horizontalAlignment=Alignment.CenterHorizontally) {
                         Text(report.period.label,fontWeight=FontWeight.Bold)
                         Text("${formatDate(report.period.start)} - ${formatDate(report.period.end)}",style=MaterialTheme.typography.bodySmall)
