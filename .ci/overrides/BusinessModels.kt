@@ -79,10 +79,15 @@ data class PixnetState(
     val staffPayroll: List<StaffPayrollSummary> = emptyList(),
     val dailyBalances: List<DailyBalance> = emptyList(),
     val currentPeriod: PeriodSummary? = null,
-    val currentOwnerAdvance: Double = PixnetRules.OPENING_OWNER_ADVANCE,
-    val currentPixnetCash: Double = PixnetRules.OPENING_CASH,
+    val currentOwnerAdvance: Double = 0.0,
+    val currentPixnetCash: Double = 0.0,
     val outstandingPayroll: Double = 0.0,
-    val unpaidBills: Double = 0.0
+    val unpaidBills: Double = 0.0,
+    val totalCollections: Double = 0.0,
+    val totalOperatingExpenses: Double = 0.0,
+    val totalPayrollExpense: Double = 0.0,
+    val sharedBalance: Double = 0.0,
+    val sharePerOwner: Double = 0.0
 )
 
 object PixnetRules {
@@ -90,8 +95,10 @@ object PixnetRules {
     val END_DATE: LocalDate = LocalDate.of(2027, 1, 17)
 
     const val OPENING_CASH = 0.0
+    // Retained only for historical reference. v1.3+ does not use Owner Advance accounting.
     const val OPENING_OWNER_ADVANCE = 4580.0
     const val STAFF_RATE = 375.0
+    const val PRIMARY_PAYER = "Von Umbrete"
 
     val STAFF = listOf("Mayanne", "Hannah")
 
@@ -105,6 +112,7 @@ object PixnetRules {
         "Von Umbrete"
     )
 
+    // Existing unresolved balances carried into the Aug 17 fresh start.
     val OPENING_OWNER_BALANCES = mapOf(
         "Gia Suarez" to 0.0,
         "Ian Escalona" to 3128.0,
@@ -115,6 +123,7 @@ object PixnetRules {
         "Von Umbrete" to 0.0
     )
 
+    // Cutoffs are REPORTING WINDOWS ONLY. They never settle or reset money.
     val PERIODS = listOf(
         CutoffPeriod("August–September", LocalDate.of(2026, 8, 17), LocalDate.of(2026, 9, 13)),
         CutoffPeriod("September–October", LocalDate.of(2026, 9, 14), LocalDate.of(2026, 10, 18)),
@@ -128,7 +137,7 @@ object PixnetRules {
             ?: if (date.isBefore(START_DATE)) PERIODS.first() else PERIODS.last()
 
     fun staffSalary(staff: String): Double =
-        if (staff == "Mayanne" || staff == "Hannah") STAFF_RATE else 0.0
+        if (staff in STAFF) STAFF_RATE else 0.0
 }
 
 object BusinessCalculator {
@@ -142,205 +151,148 @@ object BusinessCalculator {
     ): PixnetState {
         val effectiveToday = minOf(today, PixnetRules.END_DATE)
 
-        val ownerBalances = PixnetRules.OPENING_OWNER_BALANCES.toMutableMap()
-        val ownerNewDue = PixnetRules.OWNERS.associateWith { 0.0 }.toMutableMap()
-        val ownerCashContrib = PixnetRules.OWNERS.associateWith { 0.0 }.toMutableMap()
-        val ownerOffsets = PixnetRules.OWNERS.associateWith { 0.0 }.toMutableMap()
-        val ownerCashProfit = PixnetRules.OWNERS.associateWith { 0.0 }.toMutableMap()
+        fun onOrBefore(epochDay: Long): Boolean =
+            !LocalDate.ofEpochDay(epochDay).isAfter(effectiveToday)
 
-        var ownerAdvance = PixnetRules.OPENING_OWNER_ADVANCE
-        var cashCarry = PixnetRules.OPENING_CASH
-        val periodSummaries = mutableListOf<PeriodSummary>()
+        val activeCollections = collections.filter { onOrBefore(it.dateEpochDay) }
+        val activeExpenses = expenses.filter { onOrBefore(it.incurredEpochDay) }
+        val activeAttendance = attendance.filter { onOrBefore(it.dateEpochDay) }
+        val activePayrollPayments = payrollPayments.filter { onOrBefore(it.dateEpochDay) }
+        val activeOwnerContributions = ownerContributions.filter { onOrBefore(it.dateEpochDay) }
 
-        for (period in PixnetRules.PERIODS) {
-            val isFinal = !today.isBefore(period.end)
+        val totalCollections = activeCollections.sumOf { it.pisonet + it.printer + it.otherIncome }
+        val totalOperatingExpenses = activeExpenses.sumOf { it.amount }
+        val totalPayrollExpense = activeAttendance.sumOf { PixnetRules.staffSalary(it.staff) }
 
-            val periodCollections = collections.filter {
-                LocalDate.ofEpochDay(it.dateEpochDay) in period.start..period.end
-            }
+        // Positive = owners need to shoulder money. Negative = business surplus/credit.
+        val sharedBalance = totalOperatingExpenses + totalPayrollExpense - totalCollections
+        val sharePerOwner = sharedBalance / PixnetRules.OWNERS.size
+
+        val contributionsByOwner = PixnetRules.OWNERS.associateWith { owner ->
+            activeOwnerContributions.filter { it.ownerName == owner }.sumOf { it.amount }
+        }
+
+        val ownerSummaries = PixnetRules.OWNERS.map { owner ->
+            val opening = PixnetRules.OPENING_OWNER_BALANCES[owner] ?: 0.0
+            val cashContribution = contributionsByOwner[owner] ?: 0.0
+
+            // Von is the operating payer. When the equal operating share is positive,
+            // his own 1/7 is already covered by the cash he fronted for PIXNET.
+            // A negative equal share remains as a credit/profit position like every owner.
+            val autoCoveredByVon = if (owner == PixnetRules.PRIMARY_PAYER) {
+                max(0.0, sharePerOwner)
+            } else 0.0
+
+            val balance = opening + sharePerOwner - cashContribution - autoCoveredByVon
+
+            OwnerSummary(
+                name = owner,
+                openingBalance = opening,
+                newContributionsDue = sharePerOwner,
+                cashContributions = cashContribution,
+                profitShareOffset = autoCoveredByVon,
+                cashProfitPaid = 0.0,
+                outstandingBalance = balance
+            )
+        }
+
+        val periodSummaries = PixnetRules.PERIODS.map { period ->
+            val periodEnd = minOf(period.end, effectiveToday)
+            val hasStarted = !effectiveToday.isBefore(period.start)
+
+            val periodCollections = if (hasStarted) activeCollections.filter {
+                LocalDate.ofEpochDay(it.dateEpochDay) in period.start..periodEnd
+            } else emptyList()
             val income = periodCollections.sumOf { it.pisonet + it.printer + it.otherIncome }
 
-            val periodExpenses = expenses.filter {
-                LocalDate.ofEpochDay(it.incurredEpochDay) in period.start..period.end
-            }
+            val periodExpenses = if (hasStarted) activeExpenses.filter {
+                LocalDate.ofEpochDay(it.incurredEpochDay) in period.start..periodEnd
+            } else emptyList()
             val nonPayrollExpenses = periodExpenses.sumOf { it.amount }
 
-            val periodAttendance = attendance.filter {
-                LocalDate.ofEpochDay(it.dateEpochDay) in period.start..period.end
-            }
+            val periodAttendance = if (hasStarted) activeAttendance.filter {
+                LocalDate.ofEpochDay(it.dateEpochDay) in period.start..periodEnd
+            } else emptyList()
             val salaryExpense = periodAttendance.sumOf { PixnetRules.staffSalary(it.staff) }
             val totalExpenses = nonPayrollExpenses + salaryExpense
             val netEarnings = income - totalExpenses
+            val periodSharedBalance = totalExpenses - income
+            val periodSharePerOwner = periodSharedBalance / PixnetRules.OWNERS.size
 
-            val paidExpensesInPeriod = expenses
-                .filter { it.paidEpochDay != null }
-                .filter {
-                    val paid = LocalDate.ofEpochDay(it.paidEpochDay!!)
-                    paid in period.start..period.end
-                }
-                .sumOf { it.amount }
+            val contributionsInPeriod = if (hasStarted) activeOwnerContributions.filter {
+                LocalDate.ofEpochDay(it.dateEpochDay) in period.start..periodEnd
+            }.sumOf { it.amount } else 0.0
 
-            val payrollPaidInPeriod = payrollPayments.filter {
-                LocalDate.ofEpochDay(it.dateEpochDay) in period.start..period.end
+            val reportDate = if (!hasStarted) period.start.minusDays(1) else periodEnd
+            val unpaidBillsReserve = activeExpenses.filter {
+                val incurred = LocalDate.ofEpochDay(it.incurredEpochDay)
+                val paid = it.paidEpochDay?.let(LocalDate::ofEpochDay)
+                !incurred.isAfter(reportDate) && (paid == null || paid.isAfter(reportDate))
             }.sumOf { it.amount }
 
-            val advanceAdded = paidExpensesInPeriod + payrollPaidInPeriod
-            val openingAdvance = ownerAdvance
-            ownerAdvance += advanceAdded
-
-            val contributionsInPeriod = ownerContributions.filter {
-                LocalDate.ofEpochDay(it.dateEpochDay) in period.start..period.end
-            }
-
-            contributionsInPeriod.forEach { payment ->
-                ownerCashContrib[payment.ownerName] =
-                    (ownerCashContrib[payment.ownerName] ?: 0.0) + payment.amount
-                ownerBalances[payment.ownerName] =
-                    max(0.0, (ownerBalances[payment.ownerName] ?: 0.0) - payment.amount)
-            }
-
-            val ownerContributionCash = contributionsInPeriod.sumOf { it.amount }
-            val fundsAvailable = cashCarry + income + ownerContributionCash
-
-            val ownerAdvanceRepaid = if (isFinal) min(ownerAdvance, fundsAvailable) else 0.0
-            ownerAdvance = max(0.0, ownerAdvance - ownerAdvanceRepaid)
-
-            val contributionNeeded = if (isFinal) max(0.0, -netEarnings) else 0.0
-            val contributionPerOwner =
-                if (contributionNeeded > 0.0) contributionNeeded / PixnetRules.OWNERS.size else 0.0
-
-            if (contributionPerOwner > 0.0) {
-                PixnetRules.OWNERS.forEach { owner ->
-                    ownerBalances[owner] = (ownerBalances[owner] ?: 0.0) + contributionPerOwner
-                    ownerNewDue[owner] = (ownerNewDue[owner] ?: 0.0) + contributionPerOwner
-                }
-            }
-
-            val unpaidBillsReserve = if (isFinal) {
-                expenses.filter {
-                    val incurred = LocalDate.ofEpochDay(it.incurredEpochDay)
-                    val paid = it.paidEpochDay?.let(LocalDate::ofEpochDay)
-                    !incurred.isAfter(period.end) && (paid == null || paid.isAfter(period.end))
+            val unpaidPayrollReserve = PixnetRules.STAFF.sumOf { staff ->
+                val earned = activeAttendance.filter {
+                    it.staff == staff && !LocalDate.ofEpochDay(it.dateEpochDay).isAfter(reportDate)
+                }.sumOf { PixnetRules.staffSalary(it.staff) }
+                val paid = activePayrollPayments.filter {
+                    it.staff == staff && !LocalDate.ofEpochDay(it.dateEpochDay).isAfter(reportDate)
                 }.sumOf { it.amount }
-            } else 0.0
-
-            val unpaidPayrollReserve = if (isFinal) {
-                PixnetRules.STAFF.sumOf { staff ->
-                    val earned = attendance.filter {
-                        it.staff == staff && !LocalDate.ofEpochDay(it.dateEpochDay).isAfter(period.end)
-                    }.sumOf { PixnetRules.staffSalary(it.staff) }
-                    val paid = payrollPayments.filter {
-                        it.staff == staff && !LocalDate.ofEpochDay(it.dateEpochDay).isAfter(period.end)
-                    }.sumOf { it.amount }
-                    max(0.0, earned - paid)
-                }
-            } else 0.0
-
-            val availableAfterAdvance = max(
-                0.0,
-                fundsAvailable - ownerAdvanceRepaid - unpaidBillsReserve - unpaidPayrollReserve
-            )
-
-            val profitPool = if (isFinal && netEarnings > 0.0 && ownerAdvance <= 0.005) {
-                min(netEarnings, availableAfterAdvance)
-            } else 0.0
-
-            val grossProfitShare =
-                if (profitPool > 0.0) profitPool / PixnetRules.OWNERS.size else 0.0
-
-            var profitOffsetTotal = 0.0
-            var cashProfitTotal = 0.0
-
-            if (grossProfitShare > 0.0) {
-                PixnetRules.OWNERS.forEach { owner ->
-                    val balance = ownerBalances[owner] ?: 0.0
-                    val offset = min(balance, grossProfitShare)
-                    val cashPayout = max(0.0, grossProfitShare - offset)
-                    ownerBalances[owner] = max(0.0, balance - offset)
-                    ownerOffsets[owner] = (ownerOffsets[owner] ?: 0.0) + offset
-                    ownerCashProfit[owner] = (ownerCashProfit[owner] ?: 0.0) + cashPayout
-                    profitOffsetTotal += offset
-                    cashProfitTotal += cashPayout
-                }
+                max(0.0, earned - paid)
             }
 
-            cashCarry = max(0.0, fundsAvailable - ownerAdvanceRepaid - cashProfitTotal)
-
-            periodSummaries += PeriodSummary(
+            PeriodSummary(
                 period = period,
-                isFinal = isFinal,
+                isFinal = !today.isBefore(period.end),
                 income = income,
                 nonPayrollExpenses = nonPayrollExpenses,
                 salaryExpense = salaryExpense,
                 totalExpenses = totalExpenses,
                 netEarnings = netEarnings,
-                openingOwnerAdvance = openingAdvance,
-                ownerAdvanceAdded = advanceAdded,
-                ownerContributionsReceived = ownerContributionCash,
-                fundsAvailable = fundsAvailable,
-                ownerAdvanceRepaid = ownerAdvanceRepaid,
-                endingOwnerAdvance = ownerAdvance,
-                ownerContributionNeeded = contributionNeeded,
-                contributionPerOwner = contributionPerOwner,
-                profitPool = profitPool,
-                grossProfitSharePerOwner = grossProfitShare,
-                profitOffsetTotal = profitOffsetTotal,
-                cashProfitPayoutTotal = cashProfitTotal,
-                cashCarryForward = cashCarry,
+                openingOwnerAdvance = 0.0,
+                ownerAdvanceAdded = 0.0,
+                ownerContributionsReceived = contributionsInPeriod,
+                fundsAvailable = income + contributionsInPeriod,
+                ownerAdvanceRepaid = 0.0,
+                endingOwnerAdvance = 0.0,
+                ownerContributionNeeded = max(0.0, periodSharedBalance),
+                contributionPerOwner = periodSharePerOwner,
+                profitPool = max(0.0, -periodSharedBalance),
+                grossProfitSharePerOwner = max(0.0, -periodSharePerOwner),
+                profitOffsetTotal = 0.0,
+                cashProfitPayoutTotal = 0.0,
+                cashCarryForward = 0.0,
                 unpaidBillsReserve = unpaidBillsReserve,
                 unpaidPayrollReserve = unpaidPayrollReserve
             )
         }
 
-        val ownerSummaries = PixnetRules.OWNERS.map { owner ->
-            val outstanding = ownerBalances[owner] ?: 0.0
-            OwnerSummary(
-                name = owner,
-                openingBalance = PixnetRules.OPENING_OWNER_BALANCES[owner] ?: 0.0,
-                newContributionsDue = ownerNewDue[owner] ?: 0.0,
-                cashContributions = ownerCashContrib[owner] ?: 0.0,
-                profitShareOffset = ownerOffsets[owner] ?: 0.0,
-                cashProfitPaid = ownerCashProfit[owner] ?: 0.0,
-                outstandingBalance = outstanding
-            )
-        }
-
-        val settlementByDate = periodSummaries
-            .filter { it.isFinal }
-            .associateBy { it.period.end }
-
         val daily = mutableListOf<DailyBalance>()
-        var runningEarnings = 0.0
-        var runningCash = PixnetRules.OPENING_CASH
+        var runningNetEarnings = 0.0
+        var runningSharedBalance = 0.0
 
         if (!effectiveToday.isBefore(PixnetRules.START_DATE)) {
             var date = PixnetRules.START_DATE
             while (!date.isAfter(effectiveToday)) {
-                val income = collections.filter {
+                val income = activeCollections.filter {
                     LocalDate.ofEpochDay(it.dateEpochDay) == date
                 }.sumOf { it.pisonet + it.printer + it.otherIncome }
 
-                val expensesIncurred = expenses.filter {
+                val expensesIncurred = activeExpenses.filter {
                     LocalDate.ofEpochDay(it.incurredEpochDay) == date
                 }.sumOf { it.amount }
 
-                val payrollIncurred = attendance.filter {
+                val payrollIncurred = activeAttendance.filter {
                     LocalDate.ofEpochDay(it.dateEpochDay) == date
                 }.sumOf { PixnetRules.staffSalary(it.staff) }
 
                 val netMovement = income - expensesIncurred - payrollIncurred
-                runningEarnings += netMovement
+                val sharedMovement = expensesIncurred + payrollIncurred - income
+                runningNetEarnings += netMovement
+                runningSharedBalance += sharedMovement
 
-                val ownerContribIn = ownerContributions.filter {
+                val ownerContribIn = activeOwnerContributions.filter {
                     LocalDate.ofEpochDay(it.dateEpochDay) == date
                 }.sumOf { it.amount }
-
-                val settlement = settlementByDate[date]
-                val ownerAdvanceRepaid = settlement?.ownerAdvanceRepaid ?: 0.0
-                val cashProfitOut = settlement?.cashProfitPayoutTotal ?: 0.0
-
-                val cashMovement = income + ownerContribIn - ownerAdvanceRepaid - cashProfitOut
-                runningCash += cashMovement
 
                 daily += DailyBalance(
                     date = date,
@@ -348,12 +300,12 @@ object BusinessCalculator {
                     expensesIncurred = expensesIncurred,
                     payrollIncurred = payrollIncurred,
                     netEarningsMovement = netMovement,
-                    runningNetEarnings = runningEarnings,
+                    runningNetEarnings = runningNetEarnings,
                     ownerContributionsIn = ownerContribIn,
-                    ownerAdvanceRepaid = ownerAdvanceRepaid,
-                    cashProfitShareOut = cashProfitOut,
-                    pixnetCashMovement = cashMovement,
-                    pixnetCashBalance = runningCash
+                    ownerAdvanceRepaid = 0.0,
+                    cashProfitShareOut = 0.0,
+                    pixnetCashMovement = sharedMovement,
+                    pixnetCashBalance = runningSharedBalance
                 )
                 date = date.plusDays(1)
             }
@@ -363,20 +315,16 @@ object BusinessCalculator {
             effectiveToday in it.period.start..it.period.end
         } ?: periodSummaries.lastOrNull()
 
-        val unpaidBillsNow = expenses.filter {
+        val unpaidBillsNow = activeExpenses.filter {
             val incurred = LocalDate.ofEpochDay(it.incurredEpochDay)
             val paid = it.paidEpochDay?.let(LocalDate::ofEpochDay)
             !incurred.isAfter(effectiveToday) && (paid == null || paid.isAfter(effectiveToday))
         }.sumOf { it.amount }
 
         val staffPayrollSummaries = PixnetRules.STAFF.map { staff ->
-            val attendanceRows = attendance.filter {
-                it.staff == staff && !LocalDate.ofEpochDay(it.dateEpochDay).isAfter(effectiveToday)
-            }
+            val attendanceRows = activeAttendance.filter { it.staff == staff }
             val salaryEarned = attendanceRows.sumOf { PixnetRules.staffSalary(it.staff) }
-            val salaryPaid = payrollPayments.filter {
-                it.staff == staff && !LocalDate.ofEpochDay(it.dateEpochDay).isAfter(effectiveToday)
-            }.sumOf { it.amount }
+            val salaryPaid = activePayrollPayments.filter { it.staff == staff }.sumOf { it.amount }
             StaffPayrollSummary(
                 name = staff,
                 daysWorked = attendanceRows.size,
@@ -385,27 +333,7 @@ object BusinessCalculator {
                 outstandingBalance = max(0.0, salaryEarned - salaryPaid)
             )
         }
-
         val outstandingPayrollNow = staffPayrollSummaries.sumOf { it.outstandingBalance }
-
-        val paidExpensesNow = expenses.filter {
-            it.paidEpochDay?.let(LocalDate::ofEpochDay)?.let { paid ->
-                !paid.isAfter(effectiveToday)
-            } ?: false
-        }.sumOf { it.amount }
-
-        val payrollPaidNow = payrollPayments.filter {
-            !LocalDate.ofEpochDay(it.dateEpochDay).isAfter(effectiveToday)
-        }.sumOf { it.amount }
-
-        val settledAdvanceToDate = periodSummaries
-            .filter { it.isFinal && !it.period.end.isAfter(effectiveToday) }
-            .sumOf { it.ownerAdvanceRepaid }
-
-        val currentOwnerAdvance = max(
-            0.0,
-            PixnetRules.OPENING_OWNER_ADVANCE + paidExpensesNow + payrollPaidNow - settledAdvanceToDate
-        )
 
         return PixnetState(
             collections = collections,
@@ -418,10 +346,15 @@ object BusinessCalculator {
             staffPayroll = staffPayrollSummaries,
             dailyBalances = daily,
             currentPeriod = currentPeriod,
-            currentOwnerAdvance = currentOwnerAdvance,
-            currentPixnetCash = daily.lastOrNull()?.pixnetCashBalance ?: PixnetRules.OPENING_CASH,
+            currentOwnerAdvance = 0.0,
+            currentPixnetCash = 0.0,
             outstandingPayroll = outstandingPayrollNow,
-            unpaidBills = unpaidBillsNow
+            unpaidBills = unpaidBillsNow,
+            totalCollections = totalCollections,
+            totalOperatingExpenses = totalOperatingExpenses,
+            totalPayrollExpense = totalPayrollExpense,
+            sharedBalance = sharedBalance,
+            sharePerOwner = sharePerOwner
         )
     }
 }
