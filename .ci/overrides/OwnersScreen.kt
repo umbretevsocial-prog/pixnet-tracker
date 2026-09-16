@@ -23,9 +23,7 @@ fun OwnersScreen(
     modifier: Modifier = Modifier
 ) {
     var showContribution by remember { mutableStateOf(false) }
-    val ownersDue = state.owners
-        .filter { it.name != PixnetRules.PRIMARY_PAYER }
-        .sumOf { max(0.0, it.outstandingBalance) }
+    val ownersDue = state.owners.sumOf { max(0.0, it.outstandingBalance) }
     val credits = state.owners.sumOf { max(0.0, -it.outstandingBalance) }
 
     LazyColumn(
@@ -73,9 +71,11 @@ fun OwnersScreen(
                     verticalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Text("How this works", fontWeight = FontWeight.Bold)
+                    Text("• All 7 owners are treated exactly the same.")
                     Text("• PAID/UNPAID is only your payment reference.")
                     Text("• Every expense and earned payroll is included once.")
                     Text("• Collections reduce the shared operating balance.")
+                    Text("• Each owner's recorded contributions reduce only that owner's balance.")
                     Text("• Cutoffs only report the balance; they never settle or reset it.")
                 }
             }
@@ -126,9 +126,6 @@ private fun SimpleOwnerCard(owner: OwnerSummary) {
             OwnerMetricV130("Opening balance", owner.openingBalance)
             OwnerMetricV130("Equal operating share", owner.newContributionsDue)
             OwnerMetricV130("Contributions paid", owner.cashContributions)
-            if (owner.name == PixnetRules.PRIMARY_PAYER && owner.profitShareOffset > 0.005) {
-                OwnerMetricV130("Own share already covered", owner.profitShareOffset)
-            }
             HorizontalDivider()
             Row(Modifier.fillMaxWidth()) {
                 Text(if (owner.outstandingBalance < -0.005) "Credit" else "Current balance", Modifier.weight(1f), fontWeight = FontWeight.Bold)
