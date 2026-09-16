@@ -17,8 +17,8 @@ text = replace_or_fail(
 )
 text = replace_or_fail(
     text,
-    '''                StatCard(\n                    "Owner Advance",\n                    money(state.currentOwnerAdvance),\n                    Modifier.weight(1f)\n                )''',
-    '''                StatCard(\n                    "Shared Balance",\n                    money(state.sharedBalance),\n                    Modifier.weight(1f)\n                )''',
+    '                StatCard("Owner Advance", money(state.currentOwnerAdvance), Modifier.weight(1f))',
+    '                StatCard("Shared Balance", money(state.sharedBalance), Modifier.weight(1f))',
     "expense Owner Advance card",
 )
 path.write_text(text)
