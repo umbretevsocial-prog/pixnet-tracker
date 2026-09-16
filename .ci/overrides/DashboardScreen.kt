@@ -9,7 +9,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.pixnet.tracker.model.PixnetRules
 import com.pixnet.tracker.model.PixnetState
 import kotlin.math.abs
 import kotlin.math.max
@@ -17,9 +16,7 @@ import kotlin.math.max
 @Composable
 fun DashboardScreen(state: PixnetState, modifier: Modifier = Modifier) {
     val current = state.currentPeriod
-    val totalDue = state.owners
-        .filter { it.name != PixnetRules.PRIMARY_PAYER }
-        .sumOf { max(0.0, it.outstandingBalance) }
+    val totalDue = state.owners.sumOf { max(0.0, it.outstandingBalance) }
     val totalCredits = state.owners.sumOf { max(0.0, -it.outstandingBalance) }
     val sharedPositive = state.sharedBalance >= 0.0
 
@@ -121,7 +118,7 @@ fun DashboardScreen(state: PixnetState, modifier: Modifier = Modifier) {
         item {
             SectionHeader(
                 "Owner Balances",
-                "Positive = owner still owes. Negative = owner has credit. Von's own positive operating share is already covered by the cash he paid for PIXNET."
+                "All 7 owners use the same formula: opening balance + equal share − recorded contributions."
             )
         }
 
