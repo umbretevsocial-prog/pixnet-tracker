@@ -51,7 +51,6 @@ jobs:
           python .ci/patches/v1.3.1_equal_owner_treatment.py
           python .ci/patches/v1.4_attendance_calendar.py
           python .ci/patches/v1.5_paid_only_accounting.py
-          python .ci/patches/v1.6_payroll_reset.py
           python .ci/patches/v1.5.1_payroll_cycle_reset.py
           python .ci/patches/v1.5.1_payroll_receipt_cycle.py
           printf '\n*.jks\n*.keystore\n' >> pixnet-tracker-app/.gitignore
@@ -115,6 +114,6 @@ jobs:
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: PIXNET-Tracker-v1.5.1-release-signed
+          name: PIXNET-Tracker-v1.6.0-release-signed
           path: pixnet-tracker-app/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
