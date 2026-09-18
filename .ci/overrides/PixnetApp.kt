@@ -30,6 +30,7 @@ private enum class AppTab(val label: String) {
 @Composable
 fun PixnetApp(viewModel: PixnetViewModel) {
     val state by viewModel.state.collectAsState()
+    val deleteConfirmation by viewModel.deleteConfirmation.collectAsState()
     var selectedTab by remember { mutableStateOf(AppTab.DASHBOARD) }
     val context = LocalContext.current
     val versionName = remember(context) {
@@ -99,5 +100,29 @@ fun PixnetApp(viewModel: PixnetViewModel) {
             AppTab.OWNERS -> OwnersScreen(state, viewModel, Modifier.padding(padding))
             AppTab.REPORTS -> ReportsScreen(state, Modifier.padding(padding))
         }
+    }
+
+    deleteConfirmation?.let { pending ->
+        AlertDialog(
+            onDismissRequest = { viewModel.cancelDelete() },
+            title = { Text(pending.title) },
+            text = { Text(pending.message) },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.confirmDelete() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) {
+                    Text(pending.confirmLabel)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.cancelDelete() }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
