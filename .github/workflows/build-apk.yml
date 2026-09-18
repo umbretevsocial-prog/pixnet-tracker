@@ -51,6 +51,7 @@ jobs:
           python .ci/patches/v1.3.1_equal_owner_treatment.py
           python .ci/patches/v1.4_attendance_calendar.py
           python .ci/patches/v1.5_paid_only_accounting.py
+          python .ci/patches/v1.6_payroll_reset.py
           python .ci/patches/v1.5.1_payroll_cycle_reset.py
           python .ci/patches/v1.5.1_payroll_receipt_cycle.py
           printf '\n*.jks\n*.keystore\n' >> pixnet-tracker-app/.gitignore
