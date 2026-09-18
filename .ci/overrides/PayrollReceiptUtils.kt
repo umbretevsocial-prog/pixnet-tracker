@@ -21,7 +21,11 @@ data class PayrollReceiptData(
     val amountPaid: Double,
     val attendanceDates: List<LocalDate>
 ) {
-    val payrollPeriodLabel: String = payrollPeriodLabelFor(datePaid)
+    val payrollPeriodLabel: String = if (attendanceDates.isNotEmpty()) {
+        "${formatDate(attendanceDates.first())} – ${formatDate(attendanceDates.last())}"
+    } else {
+        payrollPeriodLabelFor(datePaid)
+    }
     val daysWorked: Int = attendanceDates.size
 }
 
