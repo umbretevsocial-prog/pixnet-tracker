@@ -26,8 +26,8 @@ fun RunningBalanceScreen(state: PixnetState, modifier: Modifier = Modifier) {
     ) {
         item {
             SectionHeader(
-                "Live Shared Balance",
-                latest?.let { "Continuous through ${formatDate(it.date)} • no cutoff settlement" }
+                "Live Actual Shared Balance",
+                latest?.let { "Paid bills/payroll only through ${formatDate(it.date)} • no cutoff settlement" }
                     ?: "Starts when the tracking period begins."
             )
         }
@@ -50,7 +50,14 @@ fun RunningBalanceScreen(state: PixnetState, modifier: Modifier = Modifier) {
         }
 
         item {
-            Text("Daily movement", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatCard("Projected Bills", money(state.unpaidBills), Modifier.weight(1f))
+                StatCard("Projected Payroll", money(state.outstandingPayroll), Modifier.weight(1f))
+            }
+        }
+
+        item {
+            Text("Daily actual movement", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
 
         if (state.dailyBalances.isEmpty()) {
@@ -79,8 +86,8 @@ private fun SharedBalanceRow(day: DailyBalance) {
 
             if (hasActivity) {
                 if (day.income != 0.0) SharedLine("Collections", -day.income)
-                if (day.expensesIncurred != 0.0) SharedLine("Expenses", day.expensesIncurred)
-                if (day.payrollIncurred != 0.0) SharedLine("Payroll", day.payrollIncurred)
+                if (day.expensesIncurred != 0.0) SharedLine("Paid Expenses", day.expensesIncurred)
+                if (day.payrollIncurred != 0.0) SharedLine("Paid Payroll", day.payrollIncurred)
                 if (day.ownerContributionsIn != 0.0) {
                     Text(
                         "Owner contributions received: ${money(day.ownerContributionsIn)} (reduces individual owner balances only)",
