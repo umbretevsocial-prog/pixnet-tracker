@@ -144,11 +144,11 @@ fun ReportsScreen(state: PixnetState, modifier: Modifier = Modifier) {
         item { ReportPair("Pisonet", report.pisonet, "Printer", report.printer) }
         item { ReportPair("Other", report.other, "Total Collection", report.collection) }
 
-        item { SectionHeader("Expenses & Payroll") }
-        item { ReportPair("Expenses", report.expenses, "Payroll", report.payroll) }
-        item { ReportPair("Total Cost", report.totalCost, "Owner Contributions", report.ownerContributions) }
+        item { SectionHeader("Paid Expenses & Payroll") }
+        item { ReportPair("Paid Expenses", report.expenses, "Paid Payroll", report.payroll) }
+        item { ReportPair("Total Paid Cost", report.totalCost, "Owner Contributions", report.ownerContributions) }
 
-        item { SectionHeader("Shared Result", "Formula: Expenses + Payroll − Collections. Then divide equally by 7 owners.") }
+        item { SectionHeader("Actual Shared Result", "Formula: Paid Expenses + Paid Payroll − Collections. Then divide equally by 7 owners.") }
         item {
             ReportPair(
                 if (report.sharedBalance >= 0) "Shared Balance" else "Business Surplus",
@@ -160,8 +160,8 @@ fun ReportsScreen(state: PixnetState, modifier: Modifier = Modifier) {
             )
         }
 
-        item { SectionHeader("Reference Status") }
-        item { ReportPair("Unpaid Bills", report.unpaidBills, "Payroll Unpaid", report.unpaidPayroll) }
+        item { SectionHeader("Projected / Outstanding", "These amounts are not included in owner dues until actually paid.") }
+        item { ReportPair("Projected Bills", report.unpaidBills, "Projected Payroll", report.unpaidPayroll) }
 
         item {
             SectionHeader(
@@ -173,9 +173,9 @@ fun ReportsScreen(state: PixnetState, modifier: Modifier = Modifier) {
             ReportOwnerRow(owner)
         }
 
-        item { SectionHeader("Expense Record") }
+        item { SectionHeader("Paid Expense Record") }
         if (report.expenseRows.isEmpty()) {
-            item { EmptyState("No expenses recorded for this report period.") }
+            item { EmptyState("No paid expenses recorded for this report period.") }
         } else {
             items(report.expenseRows, key = { it.id }) { expense ->
                 ReportExpenseRowV130(expense)
@@ -234,7 +234,7 @@ private fun ReportExpenseRowV130(expense: ExpenseEntity) {
             Column(Modifier.weight(1f)) {
                 Text(expense.description, fontWeight = FontWeight.SemiBold)
                 Text(
-                    "${expense.category} • ${formatDate(LocalDate.ofEpochDay(expense.incurredEpochDay))}",
+                    "${expense.category} • Paid ${formatDate(LocalDate.ofEpochDay(expense.paidEpochDay ?: expense.incurredEpochDay))}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -264,11 +264,11 @@ private fun makeSimpleReport(state: PixnetState, period: ReportPeriod, today: Lo
         val date = LocalDate.ofEpochDay(it.dateEpochDay)
         date in period.start..asOf
     }
-    val reportExpenses = state.expenses.filter {
-        val date = LocalDate.ofEpochDay(it.incurredEpochDay)
-        date in period.start..asOf
-    }.sortedByDescending { it.incurredEpochDay }
-    val reportAttendance = state.attendance.filter {
+    val reportExpenses = state.expenses.filter { expense ->
+        val paidDate = expense.paidEpochDay?.let(LocalDate::ofEpochDay)
+        paidDate != null && paidDate in period.start..asOf
+    }.sortedByDescending { it.paidEpochDay ?: it.incurredEpochDay }
+    val reportPayrollPayments = state.payrollPayments.filter {
         val date = LocalDate.ofEpochDay(it.dateEpochDay)
         date in period.start..asOf
     }
@@ -294,7 +294,7 @@ private fun makeSimpleReport(state: PixnetState, period: ReportPeriod, today: Lo
         printer = reportCollections.sumOf { it.printer },
         other = reportCollections.sumOf { it.otherIncome },
         expenses = reportExpenses.sumOf { it.amount },
-        payroll = reportAttendance.sumOf { PixnetRules.staffSalary(it.staff) },
+        payroll = reportPayrollPayments.sumOf { it.amount },
         ownerContributions = reportContributions.sumOf { it.amount },
         ownerBalances = asOfState.owners,
         unpaidBills = asOfState.unpaidBills,
@@ -316,15 +316,19 @@ private fun reportText(report: SimpleReport, mode: ReportMode): String = buildSt
     appendLine("Other: ${money(report.other)}")
     appendLine("Total Collection: ${money(report.collection)}")
     appendLine()
-    appendLine("EXPENSES & PAYROLL")
-    appendLine("Expenses: ${money(report.expenses)}")
-    appendLine("Payroll: ${money(report.payroll)}")
-    appendLine("Total Cost: ${money(report.totalCost)}")
+    appendLine("PAID EXPENSES & PAYROLL")
+    appendLine("Paid Expenses: ${money(report.expenses)}")
+    appendLine("Paid Payroll: ${money(report.payroll)}")
+    appendLine("Total Paid Cost: ${money(report.totalCost)}")
     appendLine()
-    appendLine("SHARED RESULT")
+    appendLine("ACTUAL SHARED RESULT")
     appendLine(if (report.sharedBalance >= 0) "Shared Balance: ${money(report.sharedBalance)}" else "Business Surplus: ${money(abs(report.sharedBalance))}")
     appendLine(if (report.sharePerOwner >= 0) "Share / Owner: ${money(report.sharePerOwner)}" else "Credit / Owner: ${money(abs(report.sharePerOwner))}")
     appendLine("Owner Contributions Received: ${money(report.ownerContributions)}")
+    appendLine()
+    appendLine("PROJECTED / OUTSTANDING")
+    appendLine("Projected Bills: ${money(report.unpaidBills)}")
+    appendLine("Projected Payroll: ${money(report.unpaidPayroll)}")
     appendLine()
     appendLine("OWNER BALANCES AS OF ${formatDate(report.asOf)}")
     report.ownerBalances.forEach { owner ->
