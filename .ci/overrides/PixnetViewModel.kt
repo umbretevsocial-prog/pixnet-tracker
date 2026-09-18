@@ -12,6 +12,13 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import kotlin.math.max
 
+data class DeleteConfirmation(
+    val title: String,
+    val message: String,
+    val confirmLabel: String = "Delete",
+    val action: suspend () -> Unit
+)
+
 private data class RawData(
     val collections: List<CollectionEntity>,
     val expenses: List<ExpenseEntity>,
@@ -22,6 +29,28 @@ private data class RawData(
 
 class PixnetViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = PixnetDatabase.get(application).dao()
+
+    private val _deleteConfirmation = MutableStateFlow<DeleteConfirmation?>(null)
+    val deleteConfirmation: StateFlow<DeleteConfirmation?> = _deleteConfirmation.asStateFlow()
+
+    private fun requestDelete(
+        title: String,
+        message: String,
+        confirmLabel: String = "Delete",
+        action: suspend () -> Unit
+    ) {
+        _deleteConfirmation.value = DeleteConfirmation(title, message, confirmLabel, action)
+    }
+
+    fun confirmDelete() {
+        val pending = _deleteConfirmation.value ?: return
+        _deleteConfirmation.value = null
+        viewModelScope.launch { pending.action() }
+    }
+
+    fun cancelDelete() {
+        _deleteConfirmation.value = null
+    }
 
     private val rawData: Flow<RawData> = combine(
         dao.observeCollections(),
@@ -69,7 +98,10 @@ class PixnetViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun deleteCollection(entry: CollectionEntity) {
-        viewModelScope.launch { dao.deleteCollection(entry) }
+        requestDelete(
+            title = "Delete collection record?",
+            message = "This will permanently remove this collection and recalculate the shared owner balances."
+        ) { dao.deleteCollection(entry) }
     }
 
     fun addExpense(
@@ -101,7 +133,10 @@ class PixnetViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun deleteExpense(entry: ExpenseEntity) {
-        viewModelScope.launch { dao.deleteExpense(entry) }
+        requestDelete(
+            title = "Delete expense record?",
+            message = "This will permanently remove this bill. If it was already paid, the actual shared balance will also be recalculated."
+        ) { dao.deleteExpense(entry) }
     }
 
     fun setAttendance(date: LocalDate, staff: String) {
@@ -111,7 +146,11 @@ class PixnetViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun clearAttendance(date: LocalDate) {
-        viewModelScope.launch { dao.clearAttendance(date.toEpochDay()) }
+        requestDelete(
+            title = "Clear attendance?",
+            message = "This will remove the attendance record for $date and recalculate that staff member's payroll outstanding.",
+            confirmLabel = "Clear"
+        ) { dao.clearAttendance(date.toEpochDay()) }
     }
 
     fun addPayrollPayment(date: LocalDate, staff: String, amount: Double, reference: String): PayrollPaymentEntity? {
@@ -140,7 +179,10 @@ class PixnetViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun deletePayrollPayment(entry: PayrollPaymentEntity) {
-        viewModelScope.launch { dao.deletePayrollPayment(entry) }
+        requestDelete(
+            title = "Delete payroll payment?",
+            message = "This will permanently remove the salary payment, make the amount outstanding again, and recalculate the actual shared balance."
+        ) { dao.deletePayrollPayment(entry) }
     }
 
     fun addOwnerContribution(date: LocalDate, owner: String, amount: Double, reference: String) {
@@ -157,6 +199,9 @@ class PixnetViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun deleteOwnerContribution(entry: OwnerContributionEntity) {
-        viewModelScope.launch { dao.deleteOwnerContribution(entry) }
+        requestDelete(
+            title = "Delete owner contribution?",
+            message = "This will permanently remove the contribution and restore the amount to this owner's running balance."
+        ) { dao.deleteOwnerContribution(entry) }
     }
 }
