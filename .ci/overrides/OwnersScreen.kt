@@ -25,6 +25,8 @@ fun OwnersScreen(
     var showContribution by remember { mutableStateOf(false) }
     val ownersDue = state.owners.sumOf { max(0.0, it.outstandingBalance) }
     val credits = state.owners.sumOf { max(0.0, -it.outstandingBalance) }
+    val projectedAdditionalPerOwner =
+        (state.unpaidBills + state.outstandingPayroll) / PixnetRules.OWNERS.size
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -34,7 +36,7 @@ fun OwnersScreen(
         item {
             SectionHeader(
                 "Owner Balances",
-                "Expenses + payroll − collections are shared equally by 7. Contributions reduce only the owner who paid them.",
+                "Paid bills + paid payroll − collections are shared equally by 7. Unpaid items stay projected.",
                 trailing = {
                     Button(onClick = { showContribution = true }) {
                         Text("+ Contribution")
@@ -60,6 +62,14 @@ fun OwnersScreen(
             }
         }
 
+        item {
+            StatCard(
+                "Projected Additional / Owner",
+                money(projectedAdditionalPerOwner),
+                Modifier.fillMaxWidth()
+            )
+        }
+
         if (credits > 0.005) {
             item { StatCard("Owner Credits", money(credits), Modifier.fillMaxWidth()) }
         }
@@ -72,9 +82,10 @@ fun OwnersScreen(
                 ) {
                     Text("How this works", fontWeight = FontWeight.Bold)
                     Text("• All 7 owners are treated exactly the same.")
-                    Text("• PAID/UNPAID is only your payment reference.")
-                    Text("• Every expense and earned payroll is included once.")
-                    Text("• Collections reduce the shared operating balance.")
+                    Text("• Only PAID bills are included in the actual owner share.")
+                    Text("• Attendance creates payroll outstanding; payroll enters the share only when paid.")
+                    Text("• Collections continuously reduce the actual shared operating balance.")
+                    Text("• Unpaid bills/payroll are projected only and do not increase owner dues yet.")
                     Text("• Each owner's recorded contributions reduce only that owner's balance.")
                     Text("• Cutoffs only report the balance; they never settle or reset it.")
                 }
