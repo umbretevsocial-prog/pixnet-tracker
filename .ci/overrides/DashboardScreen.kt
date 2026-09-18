@@ -32,7 +32,7 @@ fun DashboardScreen(state: PixnetState, modifier: Modifier = Modifier) {
                 fontWeight = FontWeight.Bold
             )
             Text(
-                "Continuous owner accounting • cutoffs are reports only",
+                "Paid-only actual accounting • cutoffs are reports only",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -42,7 +42,7 @@ fun DashboardScreen(state: PixnetState, modifier: Modifier = Modifier) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 StatCard("Collections", money(state.totalCollections), Modifier.weight(1f))
                 StatCard(
-                    "Expenses + Payroll",
+                    "Paid Expenses + Payroll",
                     money(state.totalOperatingExpenses + state.totalPayrollExpense),
                     Modifier.weight(1f)
                 )
@@ -82,8 +82,8 @@ fun DashboardScreen(state: PixnetState, modifier: Modifier = Modifier) {
 
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatCard("Unpaid Bills", money(state.unpaidBills), Modifier.weight(1f))
-                StatCard("Payroll Unpaid", money(state.outstandingPayroll), Modifier.weight(1f))
+                StatCard("Projected Bills", money(state.unpaidBills), Modifier.weight(1f))
+                StatCard("Projected Payroll", money(state.outstandingPayroll), Modifier.weight(1f))
             }
         }
 
@@ -106,10 +106,12 @@ fun DashboardScreen(state: PixnetState, modifier: Modifier = Modifier) {
                             StatusPill(statusText(period.isFinal))
                         }
                         DashboardLine("Collections", period.income)
-                        DashboardLine("Expenses", period.nonPayrollExpenses)
-                        DashboardLine("Payroll", period.salaryExpense)
+                        DashboardLine("Paid expenses", period.nonPayrollExpenses)
+                        DashboardLine("Paid payroll", period.salaryExpense)
                         DashboardLine("Net earnings", period.netEarnings, bold = true)
-                        DashboardLine("Share / owner", period.contributionPerOwner, bold = true)
+                        DashboardLine("Actual share / owner", period.contributionPerOwner, bold = true)
+                        DashboardLine("Projected bills", period.unpaidBillsReserve)
+                        DashboardLine("Projected payroll", period.unpaidPayrollReserve)
                     }
                 }
             }
@@ -118,7 +120,7 @@ fun DashboardScreen(state: PixnetState, modifier: Modifier = Modifier) {
         item {
             SectionHeader(
                 "Owner Balances",
-                "All 7 owners use the same formula: opening balance + equal share − recorded contributions."
+                "All 7 owners share only PAID bills/payroll. Unpaid bills and unpaid payroll stay projected until actually paid."
             )
         }
 
